@@ -9,6 +9,10 @@ import UIKit
 /// launch runs nothing. Put the files there with devicectl device copy to. One command per line,
 /// picking up lines added later while it runs:
 ///   mac [NAME]         start that Mac (the one used last without a name) once JIT is on
+///   install BUILD [NAME]  download and install that macOS (a build from Installer.swift, e.g. 26B123) on a new Mac
+///                      called NAME (Mac), and wait until it is done or has failed; the restore image is kept
+///   hostmmu            time the host MMU's page mapping, faults and flushes (a prototype's numbers), into the log
+///   scale K            the Size of Things setting (1, 0.8, 0.667) of the Mac used last, for its next start
 ///   wait SECONDS
 ///   type TEXT          typed into the Mac (the log shows only how long it is)
 ///   key CODE           a Linux key code (28 is Return, 1 is Escape)
@@ -77,6 +81,39 @@ enum Autopilot {
                 return
             }
             start(mac)
+        case "install":
+            let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard let release = MacOSRelease.all.first(where: { $0.id == words.first }) else {
+                HengeLog.log("autopilot", "no macOS build \(words.first ?? ""); there are \(MacOSRelease.all.map(\.id))")
+                return
+            }
+            for _ in 0..<240 where !JITBootstrap.ready { try? await Task.sleep(nanoseconds: 500_000_000) }
+            guard JITBootstrap.ready else { HengeLog.log("autopilot", "JIT is not on; not installing"); return }
+            Installer.shared.reset()
+            Installer.shared.start(release, name: words.count > 1 ? words[1] : "Mac", ramMB: 4096, cpus: 4, keepImage: true)
+            var last = Date.distantPast
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let i = Installer.shared
+                if case .done(let text) = i.phase { HengeLog.log("autopilot", "install done: \(text)"); break }
+                if case .failed(let text) = i.phase { HengeLog.log("autopilot", "install failed: \(text)"); break }
+                if Date().timeIntervalSince(last) >= 60 { // a line a minute, so the log shows it moving
+                    last = Date()
+                    HengeLog.log("autopilot", "install: \(i.phase), \(i.received >> 20) of \(i.expected >> 20) MB, step \(i.step) \(Int(i.stepProgress * 100))%")
+                }
+            }
+        case "hostmmu": // what mapping guest pages with the host's MMU costs here (host/proto_hostmmu.c), into the log
+            let text = await Task.detached { () -> String in
+                var buf = [CChar](repeating: 0, count: 4096)
+                _ = hv_proto_hostmmu_text(&buf, buf.count)
+                return String(cString: buf)
+            }.value
+            for l in text.split(separator: "\n") { HengeLog.log("autopilot", String(l)) }
+        case "scale": // "scale 0.8": the Size of Things setting (1, 0.8, 0.667) of the Mac used last, for its next start
+            guard var mac = Machines.shared.all.max(by: { ($0.lastUsed ?? $0.added) < ($1.lastUsed ?? $1.added) }) else { return }
+            mac.uiScale = Double(arg).map { $0 >= 1 ? nil : $0 } ?? nil
+            Machines.shared.update(mac)
+            HengeLog.log("autopilot", "\(mac.name): screen \(mac.screen.width)x\(mac.screen.height) at the next start")
         case "wait":
             try? await Task.sleep(nanoseconds: UInt64((Double(arg) ?? 0) * 1e9))
         case "type":

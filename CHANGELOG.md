@@ -25,6 +25,36 @@ Every change keeps its original author in the git history.
   trackpad). The report format follows the Linux kernel's `hid-magicmouse` MT2 support and
   VoodooInput's Magic Trackpad II emulation.
 
+### Staying alive on a device
+- **Henge stays awake in the background** while a Mac is open or macOS installs (Settings → In the Background, on):
+  it plays silence, so iOS does not suspend it, an install goes on with the screen locked, and Henge is closed
+  after every suspended app instead of first. A running Mac waits, paused, until Henge is back (`KeepAlive.swift`).
+- **Memory relief**: when iOS reports memory pressure the Mac is asked to hand memory back through its balloon
+  (now always there, asking for nothing until needed), and gets it back once the pressure is gone.
+- **8 GB devices**: a Mac gets 3 GB at most and the code cache defaults to 1 GB. An iPad Pro M4 with a 4 GB Mac
+  and a 1.5 GB cache was closed by iOS four minutes in, with 7 GB compressed.
+- The log says what the footprint is made of (internal, compressed, graphics), each memory warning and pressure
+  level, and when Henge goes to and from the background.
+- "signal 4 in translated code": GPU surfaces over 64 MB are read through their page directory, and the hardening
+  around it (upstream PR #207 by Elvis-Luo, applied here). It ended an iPad session 70 s in.
+- The pointer no longer drifts while scrolling: every report states both axes (upstream PR #209 by Elvis-Luo).
+- Stopping the restore system after an install no longer blocks the main thread.
+
+### Size of Things
+- A Mac's settings offer *Default*, *Large* and *Larger*: macOS gets a smaller screen of the same shape (1536 or
+  1280 wide in place of 1920), so text and buttons are bigger on a phone and there is less to draw.
+
+### Engine defaults for devices
+- *Grouped memory accesses* on by default (Settings → Performance): one page check for several accesses on the
+  same base register. An iPad measured 11% more frames with it (upstream issue #164); the Mac tool keeps it off.
+- The display's refresh event (`HV_PVG_VBLANK`) on by default: the same report saw the display freeze under load in
+  5 of 6 rounds without it and 1 of 6 with it.
+- `HV_TLB_FLUSH_ALL=1` (henge-env.txt): whole-TLB flushes clear every table, for a device A/B of upstream issue #75.
+- Autopilot: `install BUILD [NAME]` installs a macOS with nobody holding the device, and `hostmmu` logs what the
+  host's own MMU costs as a TLB (`host/proto_hostmmu.c`: on an iPhone19,4 a page faulted in costs ~9 µs against
+  ~0.2 µs for the software TLB, and one 32 GB window fits).
+- `HV_GROUPS` is read by the Mac tool and the tests too (`HV_GROUPS=1 make test`).
+
 ## 0.2.0 (100)
 
 Based on upstream `main` at b744a78.

@@ -24,8 +24,23 @@ struct VirtualMac: Identifiable, Codable, Hashable {
     /// With reportHostIdentity: also report the device's model identifier (hw.model).
     /// Experimental — it may bring the device's icon, and may confuse macOS.
     var reportHostModelID: Bool?
+    /// How big things look on the Mac: 1 (or none) is the full screen size; less gives macOS a smaller screen of the
+    /// same shape, which the device shows larger (and which takes less drawing). Applied at the next boot.
+    var uiScale: Double?
+    static let uiScales: [(name: String, scale: Double)] = [("Default", 1), ("Large", 0.8), ("Larger", 2.0 / 3)]
     var isRetina: Bool { Device.isPad && (retina ?? false) }
-    var screen: (width: Int, height: Int) { isRetina ? Device.retinaScreen : (screenWidth ?? 1920, screenHeight ?? 1080) }
+    /// The screen before uiScale: what the Screen choice asks for.
+    var baseScreen: (width: Int, height: Int) { isRetina ? Device.retinaScreen : (screenWidth ?? 1920, screenHeight ?? 1080) }
+    var screen: (width: Int, height: Int) {
+        let base = baseScreen, k = min(max(uiScale ?? 1, 0.5), 1)
+        guard k < 1 else { return base }
+        return (Int((Double(base.width) * k / 8).rounded()) * 8, Int((Double(base.height) * k / 8).rounded()) * 8)
+    }
+    /// The panel size macOS is told for a Retina screen: smaller with uiScale, so the density (and 2x drawing) stays.
+    var retinaMM: (width: Int, height: Int) {
+        let mm = Device.retinaMM, k = min(max(uiScale ?? 1, 0.5), 1)
+        return (Int((Double(mm.width) * k).rounded()), Int((Double(mm.height) * k).rounded()))
+    }
     var aspect: CGFloat { CGFloat(screen.width) / CGFloat(screen.height) }
 
     var directory: URL { Machines.directory(for: id) }
@@ -45,9 +60,17 @@ enum GuestMemory {
         let free = (try? mac.directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? 0
         let room = free > 0 ? UInt64(max(free - (2 << 30), 0)) >> 20 : UInt64.max
+        // The room held at launch for a Mac app's allocators is the Mac's now: measured without it, the RAM would
+        // only get what is left beside it (about 1.5 GB), and the engine lets it go when it starts anyway.
+        henge_ios_release_high_room()
         let reach = henge_largest_mapping_mb()
-        let ram = min(UInt64(mac.ramMB), room, reach > 512 ? reach - 512 : 0) / 512 * 512
-        HengeLog.log("session", "guest RAM \(ram) MB (asked \(mac.ramMB), disk room \(room), largest mapping \(reach))")
+        // An 8 GB device cannot hold a 4 GB Mac beside the engine (its code cache and records come to 2.5 GB or
+        // more) and iOS: an iPad Pro M4 compressed 7 GB and then closed Henge four minutes in. 3 GB there; macOS
+        // makes up the difference with its own swap, on the Mac's disk, which iOS has none of.
+        let physical = ProcessInfo.processInfo.physicalMemory >> 20
+        let fits: UInt64 = physical <= 6700 ? 2048 : physical <= 8700 ? 3072 : UInt64.max
+        let ram = min(UInt64(mac.ramMB), room, reach > 512 ? reach - 512 : 0, fits) / 512 * 512
+        HengeLog.log("session", "guest RAM \(ram) MB (asked \(mac.ramMB), disk room \(room), largest mapping \(reach), this device fits \(fits == UInt64.max ? "any" : String(fits)))")
         return ram
     }
 }

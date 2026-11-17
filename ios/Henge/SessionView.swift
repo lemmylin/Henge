@@ -186,6 +186,7 @@ struct SessionView: View {
             VolumeClicks.shared.releaseButtons()
             if phase == .inactive { InstantResume.pause() }
             if phase == .background && bootRAM > 0 { InstantResume.suspend(mac, ramMB: bootRAM, cpus: cpus) }
+            if phase == .background { InstantResume.rest() }
         }
         .onChange(of: showDetails) { showing in
             if showing { HardwareKeys.releaseAll(); StickyKeys.shared.releaseAll() }
@@ -600,7 +601,7 @@ struct SessionView: View {
         EngineTuning.apply()
         henge_vm_set_display(UInt32(mac.screen.width), UInt32(mac.screen.height))
         if mac.isRetina {
-            henge_vm_set_display_mm(UInt32(Device.retinaMM.width), UInt32(Device.retinaMM.height))
+            henge_vm_set_display_mm(UInt32(mac.retinaMM.width), UInt32(mac.retinaMM.height))
         } else {
             henge_vm_set_display_mm(0, 0)
         }
