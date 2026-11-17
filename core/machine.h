@@ -206,6 +206,7 @@ typedef struct HvPerCpu {
     uint32_t walk_seq;           /* odd while it walks page tables and fills its TLB (see hv_tlbi_drop_remote_va) */
     uint64_t walk_page[8];       /* the page walk k (walk_seq 2k -> 2k+1) fills, at [k % 8]; HV_WALK_ANY: a process switch */
     uint32_t ijc_seq;            /* odd while it checks a block's mapping in its TLB and caches it (hv_ijc_fill_checked) */
+    uint64_t ijc_va[8];          /* the block VA ijc fill k (ijc_seq 2k -> 2k+1) checks, at [k % 8] */
     uint32_t thread;             /* its host thread (mach_port_t), for --stats: is a CPU waited for running at all */
     uint8_t phase;               /* for --stats, what a CPU others wait on is doing: HV_PHASE_* */
     HvTlbStash stash[HV_STASHES];

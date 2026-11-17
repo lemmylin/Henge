@@ -33,6 +33,8 @@ static void knobs_init(void) {
        entries stale, not just the incoming one's). It was worth ~3% on a process-spawn loop; not worth guest memory. */
     if (!getenv("HV_IJC_PAGES")) hv_knob[HV_K_IJCPAGES] = 1;
     if (!getenv("HV_DNS_PROXY")) hv_knob[HV_K_DNSPROXY] = 1;
+    if (!getenv("HV_RANGE_DROP")) hv_knob[HV_K_RANGEDROP] = 256;
+    if (!getenv("HV_SYNC_WAIT")) hv_knob[HV_K_SYNCWAIT] = 1;
 }
 
 int hv_knob_set(HvMachine *m, const char *name, int value) {
@@ -95,6 +97,8 @@ static int init_rest(HvMachine *m) {
        a JIT check of 200 recompiled functions correct; bench times the same within noise). */
     hv_knob[HV_K_IJCPAGES] = getenv("HV_IJC_PAGES") ? atoi(getenv("HV_IJC_PAGES")) : 1;
     hv_knob[HV_K_DNSPROXY] = getenv("HV_DNS_PROXY") ? atoi(getenv("HV_DNS_PROXY")) : 1;
+    hv_knob[HV_K_RANGEDROP] = getenv("HV_RANGE_DROP") ? atoi(getenv("HV_RANGE_DROP")) : 256;
+    hv_knob[HV_K_SYNCWAIT] = getenv("HV_SYNC_WAIT") ? atoi(getenv("HV_SYNC_WAIT")) : 1;
     /* HV_TLB_FLUSH_ALL=1: a whole-TLB flush clears all four tables instead of the entries logged as filled (issue #75
        measured the logged clear ~2.4-2.9 s slower over a cold boot on a Mac; off until a device A/B says the same). */
     if (getenv("HV_TLB_FLUSH_ALL")) hv_knob[HV_K_FLUSHALL] = atoi(getenv("HV_TLB_FLUSH_ALL"));
