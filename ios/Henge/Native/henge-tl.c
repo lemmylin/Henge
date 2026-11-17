@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <libkern/OSByteOrder.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <TargetConditionals.h>
 #include <unistd.h>
 
 #include "henge-ios-jit.h"
@@ -431,7 +433,9 @@ static int run_binary(const char *path, const char *args_line, const char *out_p
         g_tl_host.soft_missing = 1;
         g_tl_host.no_processes = 1;
         g_tl_host.ios_kernel_rules = 1;
+#if TARGET_OS_IPHONE
         g_tl_host.high_rooms = henge_ios_take_high_room(g_tl_host.high_room, g_tl_host.high_room_bytes);
+#endif
         g_tl_host_inited = 1;
     }
     /* From here part of the JIT region may be remapped for the program's data: no Mac in this launch. */
@@ -468,9 +472,13 @@ static int run_binary(const char *path, const char *args_line, const char *out_p
         dup2(out, 2);
         close(out);
     }
+    char caller_cwd[PATH_MAX] = "";
+    if (!getcwd(caller_cwd, sizeof caller_cwd)) caller_cwd[0] = 0;
+    char resolved_path[PATH_MAX];
+    const char *exec_path = realpath(path, resolved_path) ? resolved_path : path;
     if (g_cwd[0]) chdir(g_cwd);
     atomic_store(&exit_code, -1);
-    RunArgs a = {path, err, errlen, NULL, argc, (const char **)argv, (const char **)envp};
+    RunArgs a = {exec_path, err, errlen, NULL, argc, (const char **)argv, (const char **)envp};
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 20u << 20);
@@ -488,6 +496,7 @@ static int run_binary(const char *path, const char *args_line, const char *out_p
     if (saved0 >= 0) { dup2(saved0, 0); close(saved0); }
     if (saved1 >= 0) { dup2(saved1, 1); close(saved1); }
     if (saved2 >= 0) { dup2(saved2, 2); close(saved2); }
+    if (caller_cwd[0]) chdir(caller_cwd);
     free_strv(argv);
     free_strv(envp);
     atomic_store(&g_tl_running, 0);
